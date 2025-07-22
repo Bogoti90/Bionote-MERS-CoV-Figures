@@ -83,9 +83,8 @@ Required columns:
 
 ## Author
 
-**Brian Ogoti**  
-Department of Medical Microbiology and Immunology  
-University of Nairobi, Kenya  
+**Brian Ogoti**    
+CEMA - UoN, Kenya  
 📧 brian.ogoti@cema.africa
 
 ## License
