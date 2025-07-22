@@ -1,4 +1,4 @@
-# MERS-CoV Bionote Rapid Antigen Test Validation Analysis
+# Bionote MERS-CoV Rapid Antigen Test Validation Analysis
 
 [![R](https://img.shields.io/badge/R-%3E%3D4.0-blue.svg)](https://www.r-project.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
