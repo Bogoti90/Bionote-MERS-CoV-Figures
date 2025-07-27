@@ -1,7 +1,7 @@
 #=============================================================================
 # MERS-CoV Bionote Rapid Antigen Test Validation: Complete Figure Generation
 #=============================================================================
-# Title:
+# This code generates both main figures from the manuscript:
 # "On-site Detection of MERS-CoV Infections in a Camel Slaughterhouse in Kenya 
 # Using a Commercial Rapid Antigen Test"
 #
@@ -9,12 +9,14 @@
 # FIGURE 2: Four-panel validation analysis (Panels A, B, C, D)
 #
 # Author: Brian Ogoti
-# Institution: CEMA-UON Nairobi, Kenya
-#
+# Institution: University of Nairobi, Kenya
+# Date: January 2025
 # 
 # Required data files:
-# - clade_bionote_analysis.csv: Clade comparison data (A vs C)
+# - clade_bionote_analysis.csv: Clade comparison data (A vs C strains)
 # - Bionote_results.csv: Field validation study results
+#
+# Dependencies: tidyverse, ggplot2, cowplot, scales, pROC
 #=============================================================================
 
 # Load required libraries
@@ -93,12 +95,10 @@ calc_sensitivity_by_threshold <- function(data, thresholds) {
 #=============================================================================
 # DATA LOADING AND PREPROCESSING
 #=============================================================================
-
 cat("Loading and preprocessing datasets...\n")
 
 # Load clade comparison data (Figure 1A)
 clade_data <- read.csv("clade_bionote_analysis.csv", header = TRUE, stringsAsFactors = FALSE)
-
 clade_processed <- clade_data %>%
   rename(
     sample_id = `Sample.ID`,
@@ -138,7 +138,6 @@ print(colnames(validation_data))
 
 # Standardize column names
 colnames(validation_data)[6] <- "Viral_isolation"
-
 validation_processed <- validation_data %>%
   rename(
     No = No,
@@ -195,12 +194,10 @@ cat("PCR-positive samples:", nrow(pcr_pos_data), "\n")
 #=============================================================================
 # STATISTICAL ANALYSES FOR FIGURE 1
 #=============================================================================
-
 cat("\nPerforming statistical analyses for Figure 1...\n")
 
 # Calculate statistics for Panel A (Clade A vs Clade C within each group)
 stat_results <- list()
-
 for (mtype in c("RNA Copies/mL", "TCID50/mL")) {
   for (test_result in c("Negative", "Positive")) {
     subset_data <- clade_combined_data %>%
@@ -245,7 +242,6 @@ cat(sprintf("Panel B - Negative vs Positive: %s\n", stat_test_panel_b$p_text))
 #=============================================================================
 # STATISTICAL ANALYSES FOR FIGURE 2
 #=============================================================================
-
 cat("\nPerforming statistical analyses for Figure 2...\n")
 
 # Define viral load thresholds for sensitivity analysis (Panel A)
@@ -261,10 +257,10 @@ auc_value <- auc(roc_curve)
 fine_thresholds <- 10^seq(2, 9, by = 0.1)
 detection_rates <- calc_sensitivity_by_threshold(pcr_pos_data, fine_thresholds)
 
-# Determine optimal LOD
-if (max(detection_rates$sensitivity, na.rm = TRUE) >= 95) {
-  detection_rates$diff_from_95 <- abs(detection_rates$sensitivity - 95)
-  lod_row <- detection_rates[which.min(detection_rates$diff_from_95),]
+# Determine optimal LOD (LOD90 - 90% detection rate)
+if (max(detection_rates$sensitivity, na.rm = TRUE) >= 90) {
+  detection_rates$diff_from_90 <- abs(detection_rates$sensitivity - 90)
+  lod_row <- detection_rates[which.min(detection_rates$diff_from_90),]
   lod_threshold <- lod_row$threshold
   lod_detection_rate <- lod_row$sensitivity
 } else {
@@ -273,31 +269,9 @@ if (max(detection_rates$sensitivity, na.rm = TRUE) >= 95) {
   lod_detection_rate <- max_sens_row$sensitivity
 }
 
-# Logistic regression for detection probability (Panel D)
-logistic_success <- FALSE
-if (nrow(pcr_pos_data) > 5) {
-  tryCatch({
-    logistic_model <- glm(Bionote_positive ~ log10_viral_load,
-                          family = binomial(link = "logit"), data = pcr_pos_data)
-    
-    pred_data <- data.frame(
-      log10_viral_load = seq(min(pcr_pos_data$log10_viral_load, na.rm = TRUE),
-                             max(pcr_pos_data$log10_viral_load, na.rm = TRUE),
-                             length.out = 100)
-    )
-    pred_data$detection_prob <- predict(logistic_model, newdata = pred_data, type = "response")
-    logistic_success <- TRUE
-  }, warning = function(w) {
-    logistic_success <<- TRUE  # Continue despite warnings
-  }, error = function(e) {
-    cat("Logistic regression failed:", e$message, "\n")
-  })
-}
-
 #=============================================================================
 # FIGURE 1: CLADE COMPARISON AND VALIDATION ANALYSIS
 #=============================================================================
-
 cat("\nGenerating Figure 1: Clade Comparison and Validation Analysis...\n")
 
 # Define color palettes and labels
@@ -327,19 +301,18 @@ annotation_data <- data.frame(
     ifelse("RNA Copies/mL_Positive" %in% names(stat_results), stat_results[["RNA Copies/mL_Positive"]]$p_text, ""),
     ifelse("TCID50/mL_Negative" %in% names(stat_results), stat_results[["TCID50/mL_Negative"]]$p_text, ""),
     ifelse("TCID50/mL_Positive" %in% names(stat_results), stat_results[["TCID50/mL_Positive"]]$p_text, "")
-  )
-)
+  ))
 
 # Panel A: Clade comparison with box plots, LOD lines and p-values
 panel_a_figure1 <- ggplot(clade_combined_data, aes(x = test_result_simplified, y = log10_viral_load)) +
   # Box plots
   geom_boxplot(aes(group = interaction(test_result_simplified, clade)),
                fill = "white", color = "black", alpha = 1, 
-               outlier.shape = NA, width = 0.6, 
+               outlier.shape = NA, width = 0.6,
                position = position_dodge(0.8), size = 0.8) +
   # Error bars
   stat_boxplot(aes(group = interaction(test_result_simplified, clade)),
-               geom = "errorbar", width = 0.3, size = 0.8, 
+               geom = "errorbar", width = 0.3, size = 0.8,
                position = position_dodge(0.8), color = "black") +
   # Data points
   geom_point(aes(color = clade), size = 2, alpha = 0.8,
@@ -372,9 +345,9 @@ panel_a_figure1 <- ggplot(clade_combined_data, aes(x = test_result_simplified, y
   labs(x = "Bionote Test Result", y = "Log10 Viral Load") +
   theme_minimal(base_size = 14, base_family = "Arial") +
   theme(
-    panel.background = element_rect(fill = "transparent", color = "black", size = 1),
+    panel.background = element_rect(fill = "white", color = "black", size = 1),
     panel.grid = element_blank(),
-    plot.background = element_rect(fill = "transparent", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
     axis.text.x = element_text(size = 12, color = "black"),
     axis.text.y = element_text(size = 12, color = "black", angle = 90, hjust = 0.5),
     axis.title.x = element_text(size = 13, color = "black"),
@@ -383,7 +356,7 @@ panel_a_figure1 <- ggplot(clade_combined_data, aes(x = test_result_simplified, y
     legend.title = element_text(size = 11, face = "bold"),
     legend.text = element_text(size = 10),
     legend.key.size = unit(0.5, "cm"),
-    legend.background = element_rect(fill = "transparent", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
     plot.margin = margin(5, 5, 5, 5),
     axis.ticks = element_line(color = "black"),
     strip.text = element_text(size = 11, face = "bold"),
@@ -406,9 +379,9 @@ panel_b_figure1 <- ggplot(pcr_pos_with_isolation_categorized,
   geom_hline(yintercept = lod_validation_rna, 
              linetype = "dashed", color = "#D55E00", size = 1, alpha = 0.8) +
   # P-value annotation
-  annotate("segment", x = 0.35, xend = 0.65, y = 8.7, yend = 8.7, 
+  annotate("segment", x = 0.35, xend = 0.65, y = 8.7, yend = 8.7,
            color = "black", size = 0.3) +
-  annotate("text", x = 0.5, y = 8.9, 
+  annotate("text", x = 0.5, y = 8.9,
            label = stat_test_panel_b$p_text,
            size = 4, family = "Arial", fontface = "bold") +
   # Data points
@@ -424,9 +397,9 @@ panel_b_figure1 <- ggplot(pcr_pos_with_isolation_categorized,
   labs(x = "Bionote Test Result", y = "Log10 RNA Copies/mL") +
   theme_minimal(base_size = 14, base_family = "Arial") +
   theme(
-    panel.background = element_rect(fill = "transparent", color = "black", size = 1),
+    panel.background = element_rect(fill = "white", color = "black", size = 1),
     panel.grid = element_blank(),
-    plot.background = element_rect(fill = "transparent", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
     axis.text.x = element_text(size = 12, color = "black"),
     axis.text.y = element_text(size = 12, color = "black", angle = 90, hjust = 0.5),
     axis.title.x = element_text(size = 13, color = "black"),
@@ -435,7 +408,7 @@ panel_b_figure1 <- ggplot(pcr_pos_with_isolation_categorized,
     legend.title = element_text(size = 11, face = "bold"),
     legend.text = element_text(size = 10),
     legend.key.size = unit(0.5, "cm"),
-    legend.background = element_rect(fill = "transparent", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
     plot.margin = margin(5, 5, 5, 5),
     axis.ticks = element_line(color = "black")
   ) +
@@ -461,15 +434,14 @@ figure1_combined <- plot_grid(
   ncol = 2, align = "h", rel_widths = c(1, 1))
 
 figure1_final <- ggdraw(figure1_combined) +
-  theme(plot.background = element_rect(fill = "transparent", color = NA))
+  theme(plot.background = element_rect(fill = "white", color = NA))
 
 #=============================================================================
-# FIGURE 2: FOUR-PANEL VALIDATION ANALYSIS
+# FIGURE 2: FOUR-PANEL VALIDATION ANALYSIS (CORRECTED VERSION)
 #=============================================================================
-
 cat("Generating Figure 2: Four-Panel Validation Analysis...\n")
 
-# Define consistent theme
+# Define consistent theme (from clean code)
 base_theme <- theme_minimal(base_size = 14, base_family = "Arial") +
   theme(
     panel.background = element_rect(fill = "white", color = "black", size = 1),
@@ -484,18 +456,18 @@ base_theme <- theme_minimal(base_size = 14, base_family = "Arial") +
 
 mers_palette <- c("Negative" = "forestgreen", "Positive" = "firebrick")
 
-# Panel A: Sensitivity vs Viral Load Threshold
+# Panel A: Sensitivity vs Viral Load Threshold (CORRECTED)
 panel_a_figure2 <- ggplot(sensitivity_by_threshold, aes(x = log10_threshold, y = sensitivity)) +
   geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper), fill = "#0072B2", alpha = 0.2) +
   geom_line(size = 1.2, color = "#0072B2") +
   geom_point(size = 3, color = "#0072B2") +
-  geom_hline(yintercept = 95, linetype = "dashed", color = "#D55E00", size = 1) +
-  labs(x = "Log10 Viral Load Threshold (RNA copies/mL)", y = "Sensitivity (%)") +
+  geom_hline(yintercept = 90, linetype = "dashed", color = "#D55E00", size = 1) +
+  labs(x = "Log10 Viral Load Threshold", y = "Sensitivity (%)") +
   base_theme +
   scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 25)) +
   scale_x_continuous(breaks = seq(2, 7, by = 1), labels = seq(2, 7, by = 1))
 
-# Panel B: ROC Curve
+# Panel B: ROC Curve (CORRECTED)
 panel_b_figure2 <- ggplot() +
   geom_path(
     data = data.frame(
@@ -505,7 +477,7 @@ panel_b_figure2 <- ggplot() +
     aes(x = specificity, y = sensitivity), size = 1.2, color = "black"
   ) +
   geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray50") +
-  labs(x = "False Positive Rate (1 - Specificity)", y = "True Positive Rate (Sensitivity)") +
+  labs(x = "False Positive Rate", y = "True Positive Rate") +
   base_theme +
   scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.25)) +
   scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.25)) +
@@ -513,57 +485,66 @@ panel_b_figure2 <- ggplot() +
            label = paste("AUC =", round(auc_value, 3)),
            size = 4, fontface = "bold", family = "Arial")
 
-# Panel C: Limit of Detection Analysis
+# Panel C: Limit of Detection Analysis (CORRECTED)
 panel_c_figure2 <- ggplot(detection_rates, aes(x = log10_threshold, y = sensitivity)) +
   geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper), fill = "#0072B2", alpha = 0.2) +
   geom_line(size = 1.2, color = "#0072B2") +
   geom_point(size = 2, alpha = 0.6, color = "#0072B2") +
-  geom_hline(yintercept = 95, linetype = "dashed", color = "#D55E00", size = 1) +
+  geom_hline(yintercept = 90, linetype = "dashed", color = "#D55E00", size = 1) +
   geom_vline(xintercept = log10(lod_threshold), linetype = "dashed", color = "#D55E00", size = 1) +
   geom_point(aes(x = log10(lod_threshold), y = lod_detection_rate),
              color = "#D55E00", size = 4) +
-  labs(x = "Log10 Viral Load Threshold (RNA copies/mL)", y = "Detection Rate (%)") +
+  labs(x = "Log10 Viral Load Threshold", y = "Detection Rate (%)") +
   base_theme +
   scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 25)) +
   scale_x_continuous(breaks = seq(2, 8, by = 1), labels = seq(2, 8, by = 1)) +
   annotate("text", x = log10(lod_threshold) - 1.2, y = 15,
-           label = paste0("eLOD = ", formatC(lod_threshold, format = "e", digits = 1)),
+           label = paste0("LOD90 = ", formatC(lod_threshold, format = "e", digits = 1)),
            color = "#D55E00", size = 4, fontface = "bold", family = "Arial")
 
-# Panel D: Detection Probability Model
-if (logistic_success) {
+# Panel D: Detection Probability Model (CORRECTED)
+if (nrow(pcr_pos_data) > 5) {
+  logistic_model <- glm(Bionote_positive ~ log10_viral_load,
+                        family = binomial(link = "logit"), data = pcr_pos_data)
+  
+  pred_data <- data.frame(
+    log10_viral_load = seq(min(pcr_pos_data$log10_viral_load, na.rm = TRUE),
+                           max(pcr_pos_data$log10_viral_load, na.rm = TRUE),
+                           length.out = 100)
+  )
+  pred_data$detection_prob <- predict(logistic_model, newdata = pred_data, type = "response")
+  
   panel_d_figure2 <- ggplot(pred_data, aes(x = log10_viral_load, y = detection_prob)) +
     geom_line(size = 1.2, color = "#0072B2") +
     geom_point(data = pcr_pos_data,
                aes(x = log10_viral_load, y = Bionote_positive, color = Bionote_result),
                alpha = 0.7, size = 2) +
     scale_color_manual(values = mers_palette) +
-    labs(x = "Log10 Viral Load (RNA copies/mL)", y = "Detection Probability") +
+    labs(x = "Log10 Viral Load", y = "Detection Probability") +
     base_theme +
     theme(legend.position = "none") +
     scale_x_continuous(breaks = seq(2, 9, by = 1), labels = seq(2, 9, by = 1)) +
     scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.25)) +
-    geom_hline(yintercept = 0.95, linetype = "dashed", color = "#D55E00", size = 1)
+    geom_hline(yintercept = 0.90, linetype = "dashed", color = "#D55E00", size = 1)
 } else {
   panel_d_figure2 <- ggplot() +
-    annotate("text", x = 0.5, y = 0.5, 
-             label = "Insufficient data\nfor probability\nmodeling", 
+    annotate("text", x = 0.5, y = 0.5,
+             label = "Insufficient data\nfor probability\nmodeling",
              size = 5, family = "Arial", hjust = 0.5, vjust = 0.5) +
-    labs(x = "Log10 Viral Load (RNA copies/mL)", y = "Detection Probability") +
+    labs(x = "Log10 Viral Load", y = "Detection Probability") +
     theme_void() +
     theme(panel.background = element_rect(fill = "white", color = "black", size = 1),
           axis.title = element_text(size = 13, color = "black"))
 }
 
-# Combine Figure 2 panels
+# Combine Figure 2 panels (CORRECTED)
 figure2_combined <- plot_grid(
   panel_a_figure2, panel_b_figure2, panel_c_figure2, panel_d_figure2,
   labels = c("A", "B", "C", "D"),
   label_size = 20, label_fontface = "bold", label_fontfamily = "Arial",
   label_x = c(-0.025, -0.025, -0.025, -0.025), 
   label_y = c(1, 1, 1, 1),
-  ncol = 2, nrow = 2, align = "hv"
-)
+  ncol = 2, nrow = 2, align = "hv")
 
 figure2_final <- ggdraw(figure2_combined) +
   theme(plot.background = element_rect(fill = "white", color = NA))
@@ -571,13 +552,10 @@ figure2_final <- ggdraw(figure2_combined) +
 #=============================================================================
 # DISPLAY AND SAVE RESULTS
 #=============================================================================
-
 # Display both figures
 cat("\n=== FIGURE GENERATION COMPLETE ===\n")
-
 print("Figure 1: Clade Comparison and Validation Analysis")
 print(figure1_final)
-
 cat("\n")
 print("Figure 2: Four-Panel Validation Analysis")
 print(figure2_final)
@@ -599,8 +577,8 @@ cat("- Clade C TCID50 LOD:", formatC(5.32e4, format = "e", digits = 2), "TCID50/
 cat("\nFigure 2 Results:\n")
 cat("- Overall test sensitivity:", round(mean(pcr_pos_data$Bionote_positive) * 100, 1), "%\n")
 cat("- Area Under ROC Curve:", round(auc_value, 3), "\n")
-cat("- Estimated Limit of Detection:", formatC(lod_threshold, format = "e", digits = 2), "RNA copies/mL\n")
-cat("- Detection rate at eLOD:", round(lod_detection_rate, 1), "%\n")
+cat("- Estimated Limit of Detection (LOD90):", formatC(lod_threshold, format = "e", digits = 2), "RNA copies/mL\n")
+cat("- Detection rate at LOD90:", round(lod_detection_rate, 1), "%\n")
 
 cat("\nStatistical Comparisons (Figure 1):\n")
 for (name in names(stat_results)) {
@@ -608,17 +586,18 @@ for (name in names(stat_results)) {
   cat(sprintf("- %s: %s\n", name, result$p_text))
 }
 
-
+# Optional: Save figures (uncomment to use)
+cat("\n=== SAVING FIGURES ===\n")
 # Save Figure 1
-ggsave("/Users/admin/Desktop/HpDiskE/LocalDisk/Manuscripts/MERS_COV Rapid Kit validation/Figure1_Clade_Comparison_Validation.png", 
+ggsave("/Users/admin/Desktop/HpDiskE/LocalDisk/Manuscripts/MERS_COV Rapid Kit validation/Figure1_Clade_Comparison_Validation.png",
        figure1_final, width = 12, height = 8, dpi = 300, bg = "white")
-ggsave("/Users/admin/Desktop/HpDiskE/LocalDisk/Manuscripts/MERS_COV Rapid Kit validation/Figure1_Clade_Comparison_Validation.pdf", 
+ggsave("/Users/admin/Desktop/HpDiskE/LocalDisk/Manuscripts/MERS_COV Rapid Kit validation/Figure1_Clade_Comparison_Validation.pdf",
        figure1_final, width = 12, height = 8, bg = "white")
 
 # Save Figure 2
-ggsave("/Users/admin/Desktop/HpDiskE/LocalDisk/Manuscripts/MERS_COV Rapid Kit validation/Figure2_Four_Panel_Validation.png", 
+ggsave("/Users/admin/Desktop/HpDiskE/LocalDisk/Manuscripts/MERS_COV Rapid Kit validation/Figure2_Four_Panel_Validation.png",
        figure2_final, width = 12, height = 10, dpi = 300, bg = "white")
-ggsave("/Users/admin/Desktop/HpDiskE/LocalDisk/Manuscripts/MERS_COV Rapid Kit validation/Figure2_Four_Panel_Validation.pdf", 
+ggsave("/Users/admin/Desktop/HpDiskE/LocalDisk/Manuscripts/MERS_COV Rapid Kit validation/Figure2_Four_Panel_Validation.pdf",
        figure2_final, width = 12, height = 10, bg = "white")
 
 cat("Figures saved to:", getwd(), "\n")
@@ -626,7 +605,6 @@ cat("Figures saved to:", getwd(), "\n")
 #=============================================================================
 # SESSION INFO FOR REPRODUCIBILITY
 #=============================================================================
-
 cat("\n=== SESSION INFORMATION FOR REPRODUCIBILITY ===\n")
 print(sessionInfo())
 
@@ -634,4 +612,3 @@ cat("\n=== ANALYSIS COMPLETE ===\n")
 cat("Both Figure 1 and Figure 2 have been generated and saved successfully.\n")
 cat("All statistical analyses are documented and reproducible.\n")
 cat("Data files required: clade_bionote_analysis.csv, Bionote_results.csv\n")
-
